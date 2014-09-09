@@ -1,0 +1,13 @@
+// $Id$
+// vim:ft=javascript
+
+// If your extension references something external, use ARG_WITH
+// ARG_WITH("msafe", "for msafe support", "no");
+
+// Otherwise, use ARG_ENABLE
+// ARG_ENABLE("msafe", "enable msafe support", "no");
+
+if (PHP_MSAFE != "no") {
+	EXTENSION("msafe", "msafe.c");
+}
+
