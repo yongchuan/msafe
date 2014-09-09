@@ -5,10 +5,16 @@ msafe
 
 编译和安装
 ===
-  cd ***/msafe
-	phpize
+  	cd ***/msafe
+  
+  	phpize
+  
 	./configure --with-msafe
+	
 	make
+	
 	make install
+	
 	编译完成msafe.so加入php.ini
+	
 	extension=msafe.so
