@@ -18,3 +18,5 @@ msafe
 	编译完成msafe.so加入php.ini
 	
 	extension=msafe.so
+	
+	msafe.enable_msafe = 1 或 0
