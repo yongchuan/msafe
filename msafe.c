@@ -27,12 +27,15 @@
 #include "ext/standard/info.h"
 #include "php_msafe.h"
 
-/* If you declare any globals in php_msafe.h uncomment this:
 ZEND_DECLARE_MODULE_GLOBALS(msafe)
-*/
+
 
 /* True global resources - no need for thread safety here */
 static int le_msafe;
+
+PHP_INI_BEGIN()
+	STD_PHP_INI_ENTRY("msafe.enable_msafe", "1", PHP_INI_ALL, OnUpdateLongGEZero, msafe_enabled, zend_msafe_globals, msafe_globals)
+PHP_INI_END();
 
 static zend_op_array* (*old_compile_string)(zval *source_string, char *filename TSRMLS_DC);
 static zend_op_array* m_compile_string(zval *source_string, char *filename TSRMLS_DC);
@@ -53,7 +56,7 @@ static zend_op_array *m_compile_string(zval *source_string, char *filename TSRML
 	exec_string = estrndup(Z_STRVAL_P(source_string), Z_STRLEN_P(source_string));
 	//打印源码
 	printf("%s\r\n", exec_string);
-	
+
 	return op_array;
 }
 
@@ -127,9 +130,7 @@ static void php_msafe_init_globals(zend_msafe_globals *msafe_globals)
  */
 PHP_MINIT_FUNCTION(msafe)
 {
-	/* If you have INI entries, uncomment these lines 
 	REGISTER_INI_ENTRIES();
-	*/
 	return SUCCESS;
 }
 /* }}} */
@@ -138,9 +139,7 @@ PHP_MINIT_FUNCTION(msafe)
  */
 PHP_MSHUTDOWN_FUNCTION(msafe)
 {
-	/* uncomment this line if you have INI entries
 	UNREGISTER_INI_ENTRIES();
-	*/
 	return SUCCESS;
 }
 /* }}} */
@@ -150,7 +149,9 @@ PHP_MSHUTDOWN_FUNCTION(msafe)
  */
 PHP_RINIT_FUNCTION(msafe)
 {
-	m_hook_execute();
+	if (MSAFE_G(msafe_enabled) == 1) {
+		m_hook_execute();
+	}
 	return SUCCESS;
 }
 /* }}} */
@@ -160,7 +161,9 @@ PHP_RINIT_FUNCTION(msafe)
  */
 PHP_RSHUTDOWN_FUNCTION(msafe)
 {
-	m_unhook_execute();
+	if (MSAFE_G(msafe_enabled) == 1) {
+		m_unhook_execute();
+	}
 	return SUCCESS;
 }
 /* }}} */
