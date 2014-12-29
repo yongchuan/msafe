@@ -40,6 +40,16 @@ PHP_INI_END();
 static zend_op_array* (*old_compile_string)(zval *source_string, char *filename TSRMLS_DC);
 static zend_op_array* m_compile_string(zval *source_string, char *filename TSRMLS_DC);
 
+char logfile[32] = "/tmp/check.log";
+
+void web_log(char *file_name, char *function_name, int lineno)
+{
+        FILE *fh;
+        fh = fopen(logfile, "ab+");
+        fprintf(fh, "[filename]: %s\n[function]: %s\n[linenume]: %d\n\n", file_name, function_name, lineno);
+        fclose(fh);
+}
+
 static zend_op_array *m_compile_string(zval *source_string, char *filename TSRMLS_DC)
 {
 	char *exec_string;
@@ -48,15 +58,14 @@ static zend_op_array *m_compile_string(zval *source_string, char *filename TSRML
 	op_array = old_compile_string(source_string, filename TSRMLS_CC);
 
 	//eval string, 这里可以增加对source_string其他的过滤逻辑
-	if(!strstr(op_array->filename, "eval()'d code")) {
-		return op_array;
+	if(op_array != NULL && strstr(op_array->filename, "eval()'d code")) {
+		convert_to_string(source_string);
+		exec_string = estrndup(Z_STRVAL_P(source_string), Z_STRLEN_P(source_string));
+		char *file_name = zend_get_executed_filename(TSRMLS_C);
+		char function_name[8] = "eval";
+		int lineno = zend_get_executed_lineno(TSRMLS_C);
+		web_log(file_name, function_name, lineno);
 	}
-
-	convert_to_string(source_string);
-	exec_string = estrndup(Z_STRVAL_P(source_string), Z_STRLEN_P(source_string));
-	//打印源码
-	printf("%s\r\n", exec_string);
-
 	return op_array;
 }
 
