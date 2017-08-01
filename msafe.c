@@ -26,6 +26,7 @@
 #include "php_ini.h"
 #include "ext/standard/info.h"
 #include "php_msafe.h"
+#include <time.h>
 
 ZEND_DECLARE_MODULE_GLOBALS(msafe)
 
@@ -34,52 +35,149 @@ ZEND_DECLARE_MODULE_GLOBALS(msafe)
 static int le_msafe;
 
 PHP_INI_BEGIN()
-	STD_PHP_INI_ENTRY("msafe.enable_msafe", "1", PHP_INI_ALL, OnUpdateLongGEZero, msafe_enabled, zend_msafe_globals, msafe_globals)
-PHP_INI_END();
+	STD_PHP_INI_BOOLEAN("msafe.enable_msafe", "1", PHP_INI_SYSTEM, OnUpdateBool, msafe_enabled, zend_msafe_globals, msafe_globals)
+	STD_PHP_INI_ENTRY("msafe.log_path", "/tmp/check.log", PHP_INI_ALL, OnUpdateString, log_path, zend_msafe_globals, msafe_globals)
+PHP_INI_END()
 
 static zend_op_array* (*old_compile_string)(zval *source_string, char *filename TSRMLS_DC);
 static zend_op_array* m_compile_string(zval *source_string, char *filename TSRMLS_DC);
 
-char logfile[32] = "/tmp/check.log";
+static zend_op_array* (*old_compile_file)(zend_file_handle *file_handle, int type TSRMLS_DC);
+static zend_op_array* my_compile_file(zend_file_handle *file_handle, int type TSRMLS_DC);
 
-void web_log(char *file_name, char *function_name, int lineno)
+void web_log(const char *file_name, char *log_string, char *type, int lineno)
 {
-        FILE *fh;
-        fh = fopen(logfile, "ab+");
-        fprintf(fh, "[filename]: %s\n[function]: %s\n[linenume]: %d\n\n", file_name, function_name, lineno);
-        fclose(fh);
+	FILE *fp;
+	fp = fopen(MSAFE_G(log_path), "ab+");
+	if (fp) {
+		time_t rawtime;
+	    struct tm *timeinfo;
+	    char time_buf[20];
+	    time(&rawtime);
+	    timeinfo = localtime (&rawtime);
+	    strftime(time_buf,sizeof(time_buf),"%Y-%m-%d %H:%M:%S",timeinfo);
+		fprintf(fp, "[filename]: %s\n[%s]: %s\n[linenume]: %d\n[time]:%s\n\n", file_name, type, log_string, lineno, time_buf);
+		fclose(fp);
+	}
 }
 
 static zend_op_array *m_compile_string(zval *source_string, char *filename TSRMLS_DC)
 {
-	char *exec_string;
 	zend_op_array *op_array;
 	
 	op_array = old_compile_string(source_string, filename TSRMLS_CC);
+	const char *file_name = zend_get_executed_filename(TSRMLS_C);
 
-	//eval string, 这里可以增加对source_string其他的过滤逻辑
-	if(op_array != NULL && strstr(op_array->filename, "eval()'d code")) {
-		convert_to_string(source_string);
-		exec_string = estrndup(Z_STRVAL_P(source_string), Z_STRLEN_P(source_string));
-		char *file_name = zend_get_executed_filename(TSRMLS_C);
+	if (op_array == NULL) {
+		return op_array;
+	}
+
+	#if (PHP_MAJOR_VERSION == 7) 
+		char *exec = op_array->filename->val;
+	#else
+		const char *exec = op_array->filename;
+	#endif
+
+	if(op_array != NULL && exec != NULL && strstr(exec, "eval()'d code")) {
 		char function_name[8] = "eval";
 		int lineno = zend_get_executed_lineno(TSRMLS_C);
-		web_log(file_name, function_name, lineno);
+		web_log(file_name, function_name, "function_name", lineno);
+		web_log(file_name, Z_STRVAL_P(source_string), "source", lineno);
 	}
 	return op_array;
 }
 
-int m_hook_execute()
+static zend_op_array *my_compile_file(zend_file_handle *file_handle, int type TSRMLS_DC)
+{
+	zend_op_array *op_array;
+	op_array = old_compile_file(file_handle, type TSRMLS_CC);
+	return op_array;
+}
+
+#if (PHP_MAJOR_VERSION == 7) 
+	static int msafe_fcall_handler(zend_execute_data *execute_data) {
+		zend_execute_data *call = execute_data->call;
+		zend_function *fbc = call->func;
+		zend_string *fname_str = fbc->common.function_name;
+
+		int arg_count = ZEND_CALL_NUM_ARGS(call);
+
+		char *fname = fname_str->val;
+		int len = sizeof(fname);
+#else 
+	static int msafe_fcall_handler(ZEND_OPCODE_HANDLER_ARGS) {
+		const zend_op *opline = execute_data->opline;
+		zval *fname_zval = MSAFE_OP1_CONSTANT_PTR(opline);
+		int arg_count = opline->extended_value;
+
+		#if (PHP_MAJOR_VERSION == 5) && (PHP_MINOR_VERSION > 3)
+			void **p = EG(argument_stack)->top;
+		#elif (PHP_MAJOR_VERSION == 5) && (PHP_MINOR_VERSION > 2)
+			void **p = EG(argument_stack)->top;
+		#else
+			void **p = EG(argument_stack).top_element;
+		#endif
+
+		char *fname = Z_STRVAL_P(fname_zval);
+		int len = Z_STRLEN_P(fname_zval);
+
+		#if (PHP_MAJOR_VERSION == 5) && (PHP_MINOR_VERSION < 3)
+			zend_function *fbc = EG(function_state_ptr)->function;
+		#else
+			zend_function *fbc = EG(current_execute_data)->function_state.function;
+		#endif
+#endif
+
+	if (fbc->common.scope == NULL) {
+		if (strncmp("system", fname, len) == 0
+			|| strncmp("passthru", fname, len) == 0
+			|| strncmp("exec", fname, len) == 0
+			|| strncmp("shell_exec", fname, len) == 0
+			|| strncmp("proc_open", fname, len) == 0 
+			|| strncmp("popen", fname, len) == 0 ) {
+
+			int lineno = zend_get_executed_lineno(TSRMLS_C);
+			const char *file_name = zend_get_executed_filename(TSRMLS_C);
+			web_log(file_name, fname, "function_name", lineno);
+
+			if (arg_count) {
+				#if (PHP_MAJOR_VERSION == 7) 
+					zval *cmd = ZEND_CALL_ARG(call, arg_count);
+				#else	
+					zval *cmd;
+					cmd = *((zval **) (p - arg_count));
+				#endif
+				if (IS_STRING == Z_TYPE_P(cmd)) {
+					web_log(file_name, Z_STRVAL_P(cmd), "argv", lineno);
+				}
+			}
+		}
+	}
+
+	return ZEND_USER_OPCODE_DISPATCH;
+} 
+
+static void msafe_register_handlers() {
+	zend_set_user_opcode_handler(ZEND_DO_FCALL, msafe_fcall_handler);
+	#if (PHP_MAJOR_VERSION == 7)
+	zend_set_user_opcode_handler(ZEND_DO_ICALL, msafe_fcall_handler);
+	zend_set_user_opcode_handler(ZEND_DO_FCALL_BY_NAME, msafe_fcall_handler);
+	#endif
+} 
+
+static void m_hook_execute()
 { 			
 	old_compile_string = zend_compile_string;
 	zend_compile_string = m_compile_string;
-	return 1;
+
+	old_compile_file = zend_compile_file; 
+    zend_compile_file = my_compile_file;
 }
 
-int m_unhook_execute()
+static void m_unhook_execute()
 {	
-	zend_compile_string = old_compile_string;    
-	return 1;
+	zend_compile_string = old_compile_string; 
+	zend_compile_file = old_compile_file;
 }
 /* {{{ msafe_functions[]
  *
@@ -104,7 +202,7 @@ zend_module_entry msafe_module_entry = {
 	PHP_RSHUTDOWN(msafe),	/* Replace with NULL if there's nothing to do at request end */
 	PHP_MINFO(msafe),
 #if ZEND_MODULE_API_NO >= 20010901
-	"0.1", /* Replace with version number for your extension */
+	"0.2", /* Replace with version number for your extension */
 #endif
 	STANDARD_MODULE_PROPERTIES
 };
@@ -160,6 +258,7 @@ PHP_RINIT_FUNCTION(msafe)
 {
 	if (MSAFE_G(msafe_enabled) == 1) {
 		m_hook_execute();
+		msafe_register_handlers(TSRMLS_C);
 	}
 	return SUCCESS;
 }
@@ -186,9 +285,7 @@ PHP_MINFO_FUNCTION(msafe)
 	php_info_print_table_header(2, "Author", "charles(charles.m1256@gmail.com)");
 	php_info_print_table_end();
 
-	/* Remove comments if you have entries in php.ini
 	DISPLAY_INI_ENTRIES();
-	*/
 }
 /* }}} */
 

@@ -61,3 +61,11 @@ if test "$PHP_MSAFE" != "no"; then
 
   PHP_NEW_EXTENSION(msafe, msafe.c, $ext_shared)
 fi
+
+if test -z "$PHP_DEBUG"; then   
+    AC_ARG_ENABLE(debug,  
+    [   --enable-debug          compile with debugging symbols],[  
+        PHP_DEBUG=$enableval  
+    ],[ PHP_DEBUG=no  
+    ])  
+fi  

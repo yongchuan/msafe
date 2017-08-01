@@ -36,6 +36,12 @@ extern zend_module_entry msafe_module_entry;
 #include "TSRM.h"
 #endif
 
+#if (PHP_MAJOR_VERSION == 5) && (PHP_MINOR_VERSION < 4) 
+#  define MSAFE_OP1_CONSTANT_PTR(n) (&(n)->op1.u.constant)
+#else
+#  define MSAFE_OP1_CONSTANT_PTR(n) ((n)->op1.zv)
+#endif
+
 PHP_MINIT_FUNCTION(msafe);
 PHP_MSHUTDOWN_FUNCTION(msafe);
 PHP_RINIT_FUNCTION(msafe);
@@ -47,7 +53,8 @@ PHP_MINFO_FUNCTION(msafe);
 	and END macros here:     
 **/
 ZEND_BEGIN_MODULE_GLOBALS(msafe)
-	long  msafe_enabled;
+	zend_bool  msafe_enabled;
+  char *log_path;
 ZEND_END_MODULE_GLOBALS(msafe)
 
 
