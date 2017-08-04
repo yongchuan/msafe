@@ -28,6 +28,7 @@ Update:
 	
 	msafe.enable_msafe = 1 或 0
 	msafe.log_path=/tmp/log.log 自定义记录路径
+	msafe.disable_found=1 禁止执行检测到的方法和eval()
 
 使用
 ===
