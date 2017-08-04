@@ -35,7 +35,8 @@ ZEND_DECLARE_MODULE_GLOBALS(msafe)
 static int le_msafe;
 
 PHP_INI_BEGIN()
-	STD_PHP_INI_BOOLEAN("msafe.enable_msafe", "1", PHP_INI_SYSTEM, OnUpdateBool, msafe_enabled, zend_msafe_globals, msafe_globals)
+	STD_PHP_INI_BOOLEAN("msafe.enable_msafe", "0", PHP_INI_ALL, OnUpdateBool, msafe_enabled, zend_msafe_globals, msafe_globals)
+	STD_PHP_INI_BOOLEAN("msafe.disable_found", "0", PHP_INI_ALL, OnUpdateBool, msafe_disable_found, zend_msafe_globals, msafe_globals)
 	STD_PHP_INI_ENTRY("msafe.log_path", "/tmp/check.log", PHP_INI_ALL, OnUpdateString, log_path, zend_msafe_globals, msafe_globals)
 PHP_INI_END()
 
@@ -45,7 +46,7 @@ static zend_op_array* m_compile_string(zval *source_string, char *filename TSRML
 static zend_op_array* (*old_compile_file)(zend_file_handle *file_handle, int type TSRMLS_DC);
 static zend_op_array* my_compile_file(zend_file_handle *file_handle, int type TSRMLS_DC);
 
-void web_log(const char *file_name, char *log_string, char *type, int lineno)
+void web_log(const char *file_name, const char *log_string, const char *type, int lineno)
 {
 	FILE *fp;
 	fp = fopen(MSAFE_G(log_path), "ab+");
@@ -83,6 +84,9 @@ static zend_op_array *m_compile_string(zval *source_string, char *filename TSRML
 		int lineno = zend_get_executed_lineno(TSRMLS_C);
 		web_log(file_name, function_name, "function_name", lineno);
 		web_log(file_name, Z_STRVAL_P(source_string), "source", lineno);
+		if (MSAFE_G(msafe_disable_found)) {
+			return NULL;
+		}
 	}
 	return op_array;
 }
@@ -150,6 +154,9 @@ static zend_op_array *my_compile_file(zend_file_handle *file_handle, int type TS
 				if (IS_STRING == Z_TYPE_P(cmd)) {
 					web_log(file_name, Z_STRVAL_P(cmd), "argv", lineno);
 				}
+			}
+			if (MSAFE_G(msafe_disable_found)) {
+				return ZEND_USER_OPCODE_DISPATCH_TO;
 			}
 		}
 	}
