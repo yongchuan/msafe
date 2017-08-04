@@ -8,6 +8,7 @@ Update:
 	1.增加PHP7支持
 	2.增加system()，passthru(),exec(),shell_exec(),proc_open(),popen()支持
 	3.增加msafe.log_path自定义存储路径
+	4.增加masfe.msafe.disable_found 设置当检测到上述方法或者eval时是否执行
 
 编译和安装
 ===
