@@ -3,11 +3,12 @@ msafe
 
 通过劫持Zend底层编译opcode，可以分析php执行的代码，从而达到还原部分混淆加密的php源码，并且可以根据自定义规则，审计代码安全，查看危险调用。
 
-Update:
+Update: (2017-08-05)
 ===
 	1.增加PHP7支持
 	2.增加system()，passthru(),exec(),shell_exec(),proc_open(),popen()支持
 	3.增加msafe.log_path自定义存储路径
+	4.增加masfe.msafe.disable_found 设置当检测到上述方法或者eval时是否执行
 
 编译和安装
 ===
@@ -27,6 +28,7 @@ Update:
 	
 	msafe.enable_msafe = 1 或 0
 	msafe.log_path=/tmp/log.log 自定义记录路径
+	msafe.disable_found=1 禁止执行检测到的方法和eval()
 
 使用
 ===
