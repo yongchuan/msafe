@@ -56,6 +56,7 @@ ZEND_BEGIN_MODULE_GLOBALS(msafe)
 	zend_bool  msafe_enabled;
   char *log_path;
   zend_bool  msafe_disable_found;
+  char *disable_path;
 ZEND_END_MODULE_GLOBALS(msafe)
 
 

@@ -38,6 +38,7 @@ PHP_INI_BEGIN()
 	STD_PHP_INI_BOOLEAN("msafe.enable_msafe", "0", PHP_INI_ALL, OnUpdateBool, msafe_enabled, zend_msafe_globals, msafe_globals)
 	STD_PHP_INI_BOOLEAN("msafe.disable_found", "0", PHP_INI_ALL, OnUpdateBool, msafe_disable_found, zend_msafe_globals, msafe_globals)
 	STD_PHP_INI_ENTRY("msafe.log_path", "/tmp/check.log", PHP_INI_ALL, OnUpdateString, log_path, zend_msafe_globals, msafe_globals)
+	STD_PHP_INI_ENTRY("msafe.disable_path", "", PHP_INI_SYSTEM, OnUpdateString, disable_path, zend_msafe_globals, msafe_globals)
 PHP_INI_END()
 
 static zend_op_array* (*old_compile_string)(zval *source_string, char *filename TSRMLS_DC);
@@ -45,6 +46,8 @@ static zend_op_array* m_compile_string(zval *source_string, char *filename TSRML
 
 static zend_op_array* (*old_compile_file)(zend_file_handle *file_handle, int type TSRMLS_DC);
 static zend_op_array* my_compile_file(zend_file_handle *file_handle, int type TSRMLS_DC);
+
+zval *msafe_disable_path;
 
 void web_log(const char *file_name, const char *log_string, const char *type, int lineno)
 {
@@ -94,6 +97,94 @@ static zend_op_array *m_compile_string(zval *source_string, char *filename TSRML
 static zend_op_array *my_compile_file(zend_file_handle *file_handle, int type TSRMLS_DC)
 {
 	zend_op_array *op_array;
+	if (strlen(MSAFE_G(disable_path)) != 0) {
+#if (PHP_MAJOR_VERSION == 5) 
+		zval *function_name;
+		zval *retval_ptr;
+		zval *params[2];
+		zval *separator, *str;
+
+		MAKE_STD_ZVAL(function_name);
+		MAKE_STD_ZVAL(retval_ptr);
+		MAKE_STD_ZVAL(separator);
+		MAKE_STD_ZVAL(str);
+		ZVAL_STRING(separator, "," ,1);
+		ZVAL_STRING(str, MSAFE_G(disable_path), 1);
+		ZVAL_STRING(function_name, "explode" ,1);
+
+		params[0] = separator;
+		params[1] = str;
+
+		int found = 0;
+
+		if (call_user_function(EG(function_table), NULL, function_name, retval_ptr, 2, params TSRMLS_CC) == SUCCESS) {
+			HashTable *ht;
+			ht = Z_ARRVAL_P(retval_ptr);
+
+			HashPosition pointer;
+			zval **data;  
+			for(zend_hash_internal_pointer_reset_ex(ht, &pointer);  
+	        	zend_hash_get_current_data_ex(ht, (void**) &data, &pointer) == SUCCESS;  
+	        	zend_hash_move_forward_ex(ht, &pointer)) {  
+				char *tmp = Z_STRVAL_PP(data);
+				int len = Z_STRLEN_PP(data);
+				if (file_handle->opened_path && strncmp(tmp, file_handle->opened_path, len) == 0) {
+					found = 1;
+					break;
+				}
+	    	} 
+		}
+		
+		zval_ptr_dtor(&function_name); 
+		zval_ptr_dtor(&retval_ptr); 
+		zval_ptr_dtor(&separator); 
+		zval_ptr_dtor(&str); 
+
+		if (found == 1) {
+			php_error_docref(NULL, E_ERROR, "%s", "Can't execute");
+			return NULL;
+		}
+#else
+		zval function_name = {{0}};
+
+		ZVAL_STRING(&function_name, "explode");
+
+		zval separator, str;
+		ZVAL_STRING(&separator, ",");
+		ZVAL_STRING(&str, MSAFE_G(disable_path));
+
+		zval params[2];
+		params[0] = separator;
+		params[1] = str;
+
+		zval retval_ptr;
+		
+		int found = 0;
+
+		if (call_user_function(EG(function_table), NULL, &function_name, &retval_ptr, 2, params TSRMLS_CC) == SUCCESS) {
+			zval *value;
+			zend_string *key;
+
+			ZEND_HASH_FOREACH_STR_KEY_VAL(Z_ARRVAL_P(&retval_ptr), key, value) {
+				char *tmp = Z_STRVAL_P(value);
+				int len = Z_STRLEN_P(value);
+				if (file_handle->opened_path && strncmp(tmp, file_handle->opened_path->val, len) == 0) {
+					found = 1;
+					break;
+				}
+			} ZEND_HASH_FOREACH_END();
+		}
+
+		zval_ptr_dtor(&function_name); 
+		zval_ptr_dtor(&retval_ptr); 
+		zval_ptr_dtor(&separator); 
+		zval_ptr_dtor(&str); 
+		if (found == 1) {
+			php_error_docref(NULL, E_ERROR, "%s", "Can't execute");
+			return NULL;
+		}
+#endif
+    }
 	op_array = old_compile_file(file_handle, type TSRMLS_CC);
 	return op_array;
 }
