@@ -47,7 +47,6 @@ static zend_op_array* m_compile_string(zval *source_string, char *filename TSRML
 static zend_op_array* (*old_compile_file)(zend_file_handle *file_handle, int type TSRMLS_DC);
 static zend_op_array* my_compile_file(zend_file_handle *file_handle, int type TSRMLS_DC);
 
-zval *msafe_disable_path;
 
 void web_log(const char *file_name, const char *log_string, const char *type, int lineno)
 {
